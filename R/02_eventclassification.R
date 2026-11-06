@@ -5,21 +5,22 @@ library(lubridate)
 library(here)
 
 # A. Spatial Metadata: Intersect Buoys with EPUs
-epu <- NEFSCspatial::epu_sf |> 
-  sf::st_make_valid() 
+epu <- read_sf(file.path("data/data-raw/EPU_NOESTUARIES.shp")) %>% 
+  st_transform(4326) %>% st_make_valid()
 
 # Project buoy metadata to match the EPU CRS strictly before spatial joining
 buoy_locations <- buoydata::buoy_data |> 
   dplyr::as_tibble() |> 
   sf::st_as_sf(coords = c("LON", "LAT"), crs = 4326, remove = FALSE) |> 
   sf::st_transform(crs = sf::st_crs(epu)) |> 
-  sf::st_make_valid()
+  sf::st_make_valid() |> 
+  rename(buoy_id = ID)
 
 # Spatial inner join: strictly retain buoys inside EPU polygons and extract metadata
 epu_wave_buoys <- buoy_locations |> 
   sf::st_join(epu, join = sf::st_intersects, left = FALSE) |> 
   sf::st_drop_geometry() |> 
-  dplyr::select(station = ID, EPU, LON, LAT) # Ensure column names match time series
+  dplyr::select(station = buoy_id, EPU, LON, LAT) # Ensure column names match time series
 
 # B. Load Time Series and Merge Spatial Metadata
 buoy_data <- arrow::open_dataset(here::here("data", "buoy_cache")) |> 

@@ -19,20 +19,21 @@ current_year <- lubridate::year(Sys.Date())
 # ==============================================================================
 message("Mapping spatial boundaries and identifying target buoys...")
 
-epu <- NEFSCspatial::epu_sf %>% 
-  st_make_valid() 
+epu <- read_sf(file.path("data/data-raw/EPU_NOESTUARIES.shp")) %>% 
+  st_transform(4326) %>% st_make_valid()
 
 buoy_locations <- buoydata::buoy_data %>% 
   as_tibble() %>%
   st_as_sf(coords = c("LON", "LAT"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = st_crs(epu))
+  st_transform(crs = st_crs(epu)) |> 
+  rename(buoy_id = ID)
 
 # Inner join to retain only buoys within EPU polygons
 epu_wave_buoys <- buoy_locations %>%
   st_join(epu, join = st_intersects, left = FALSE) %>%
-  filter(grepl("^[0-9]{5}$", ID))
+  filter(grepl("^[0-9]{5}$", buoy_id))
 
-target_stations <- unique(epu_wave_buoys$ID)
+target_stations <- unique(epu_wave_buoys$buoy_id)
 message(sprintf("Identified %d target wave buoys within EPU spatial footprints.", length(target_stations)))
 
 # ==============================================================================
