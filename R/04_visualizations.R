@@ -32,7 +32,7 @@ storm_plot <- ggplot(plot_data |> filter(EPU != "SS"), aes(x = year, y = est, co
   facet_wrap(EPU ~ ., scales = "free_y") +
   scale_color_viridis_d(name = "DD Class", option = "plasma") +
   scale_fill_viridis_d(name = "DD Class", option = "plasma") +
-  # scale_y_log10() + # Uncomment if Class 1 compresses higher classes
+  scale_y_log10() + # Uncomment if Class 1 compresses higher classes
   labs(
     x = "Year",
     y = "Area-Integrated Storm Footprint",
@@ -100,28 +100,33 @@ ggsave(
   plot = anomaly_plot, width = 12, height = 9, dpi = 300
 )
 
-# --- 4. SPATIAL FIELD (OMEGA) MAPPING -----------------------------------------
-message("Generating Time-Invariant Spatial Maps...")
+# --- 4. SPATIAL HOTSPOT MAPPING (TIME-AVERAGED) -------------------------------
+message("Generating Time-Averaged Spatial Hotspot Maps...")
 
-# Single-year spatial prediction grid (omega_s is static across years)
-spatial_grid_single <- pred_grid |>
-  filter(year == min(year)) |>
-  select(EPU, X_km, Y_km, log_effort)
-
-# Extract spatial field (omega_s) from the winning model for each class
+# Predict across ALL years to ensure ar1, rw, and iid fields are fully captured
 omega_list <- lapply(seq_len(nrow(best_models)), function(k) {
-  
   target_class <- best_models$dd_class[k]
   fit_file <- best_models$final_file[k]
-  
   if (!file.exists(fit_file)) return(NULL)
-  
   fit_obj <- readRDS(fit_file)
-  pred_obj <- predict(fit_obj, newdata = spatial_grid_single)
   
-  pred_obj |>
-    select(X_km, Y_km, omega_s) |>
-    mutate(dd_class = target_class)
+  # Predict onto the full multi-year grid
+  pred_full <- predict(fit_obj, newdata = pred_grid)
+  
+  # Calculate the true spatial average over time for each cell
+  pred_full |>
+    group_by(X_km, Y_km) |>
+    summarize(
+      # Average the log-link estimates across all years
+      mean_log_est = mean(est, na.rm = TRUE), 
+      .groups = "drop"
+    ) |>
+    mutate(
+      dd_class = target_class,
+      # Mean-center the estimates within the class to create a divergent +/- scale 
+      # (Mimics the omega_s visualization exactly, but accurately captures AR1 fields)
+      relative_hotspot = mean_log_est - mean(mean_log_est, na.rm = TRUE)
+    )
 })
 
 omega_df <- bind_rows(omega_list) |>
@@ -133,17 +138,17 @@ omega_sf <- omega_df |>
   st_as_sf(coords = c("X_m", "Y_m"), crs = 32619)
 
 omega_plot <- ggplot() +
-  geom_sf(data = omega_sf, aes(color = omega_s), size = 1.2, shape = 15) +
+  geom_sf(data = omega_sf, aes(color = relative_hotspot), size = 1.2, shape = 15) +
   geom_sf(data = epu_water, fill = NA, color = "black", linewidth = 0.5) +
   geom_sf(data = coastline_sf, fill = "grey30", color = NA) +
   facet_wrap(~ dd_class_label, nrow = 1) +
   scale_color_gradient2(
     low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
-    name = "Spatial\nEffect (ω)"
+    name = "Relative\nHotspot"
   ) +
   labs(
-    title = "Time-Invariant Spatial Fields (ω) by Storm Intensity Class",
-    subtitle = "Red: Chronic baseline storm hotspots | Blue: Chronic baseline coldspots",
+    title = "Time-Averaged Spatial Hotspots by Storm Intensity Class",
+    subtitle = "Red: Above-average chronic footprint | Blue: Below-average chronic footprint",
     x = NULL, 
     y = NULL
   ) +
@@ -157,8 +162,10 @@ omega_plot <- ggplot() +
     panel.grid = element_blank()
   )
 
+print(omega_plot)
+
 ggsave(
-  filename = file.path(fig_dir, "dolan_davis_omega_maps.png"),
+  filename = file.path(fig_dir, "dolan_davis_hotspot_maps.png"),
   plot = omega_plot, 
   width = 16, 
   height = 5, 
