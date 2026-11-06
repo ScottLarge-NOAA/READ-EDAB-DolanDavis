@@ -353,12 +353,21 @@ ggsave(
   plot = anomaly_plot, width = 12, height = 9, dpi = 300
 )
 
+<<<<<<< HEAD
+=======
+message("Index extraction and plotting complete!") 
+
+>>>>>>> 5bcac6315a4a232b03db0a6b178e76268c914a17
 
 # 1. Prepare a single-year spatial prediction grid
 # The spatial field (omega_s) does not change by year, so one year is sufficient
 spatial_grid_single <- pred_grid |>
   filter(year == min(year)) |>
+<<<<<<< HEAD
   select(EPU, X_km, Y_km, year, log_effort)
+=======
+  select(EPU, X_km, Y_km, log_effort)
+>>>>>>> 5bcac6315a4a232b03db0a6b178e76268c914a17
 
 # 2. Extract omega_s from the winning model for each class
 omega_list <- lapply(seq_len(nrow(best_models)), function(k) {
